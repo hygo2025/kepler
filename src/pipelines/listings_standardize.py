@@ -42,32 +42,42 @@ def coerce_schema(df):
 
     return df
 
-
-def amenities_explode(df):
-    if 'amenities' not in df.columns:
+def amenities_explode(df: DataFrame) -> DataFrame | None:
+    if "amenities" not in df.columns:
         return None
-    cleaned: DataFrame = (df
-                          .withColumn(colName='amenities_norm',
-                                      col=F.regexp_replace(str=F.col('amenities'), pattern=r"[\[\]']", replacement=""))
-                          .withColumn(colName='amenities_norm',
-                                      col=F.regexp_replace(str=F.col('amenities_norm'), pattern=r"\s+",
-                                                           replacement=" "))
-                          .withColumn(colName='amenities_norm', col=F.trim(F.col('amenities_norm')))
-                          )
-    exploded = (cleaned
-                .withColumn(colName='amenity', col=F.explode(
-        F.filter(
-            F.split(F.col('amenities_norm'), r"\s+"),
-            lambda x: (x.isNotNull()) & (F.length(x) > 0)
+
+    cleaned = (
+        df.withColumn(
+            "amenities_norm",
+            F.regexp_replace(F.col("amenities"), r"[\[\]']", "")
         )
-    ))
-                .where(F.col('amenity').isNotNull() & (F.length('amenity') > 0))
+        .withColumn(
+            "amenities_norm",
+            F.regexp_replace(F.col("amenities_norm"), r"\s+", " ")
+        )
+        .withColumn("amenities_norm", F.trim(F.col("amenities_norm")))
+    )
+
+    exploded = (
+        cleaned
+        .withColumn(
+            "amenity",
+            F.explode(
+                F.filter(
+                    F.split(F.col("amenities_norm"), r"\s+"),
+                    lambda x: x.isNotNull() & (F.length(x) > 0)
                 )
-    return exploded.drop('amenities_norm')
+            )
+        )
+        .where(F.col("amenity").isNotNull() & (F.length("amenity") > 0))
+    )
+    return exploded.drop("amenities_norm")
+
 
 
 def standardize_listings(df_raw: DataFrame) -> DataFrame:
     cols: List[str] = [c for c in ALL_COLS if c in df_raw.columns]
-    df: DataFrame = df_raw.select(cols)
+    df: DataFrame = df_raw.select(*cols) if cols else df_raw
     df = coerce_schema(df=df)
     return df
+

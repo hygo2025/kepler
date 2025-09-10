@@ -7,17 +7,27 @@ from pyspark.sql import functions as F
 
 
 def parse_ts_multi(col: Union[str, Column]) -> Column:
-    return F.coalesce(
-        F.col(col=col).cast("timestamp"),
-        F.to_timestamp(col=F.col(col=col)),
-        F.to_timestamp(col=F.col(col=col), format="yyyy-MM-dd HH:mm:ss"),
-        F.to_timestamp(col=F.col(col=col), format="yyyy-MM-dd HH:mm:ss.SSS"),
-        F.to_timestamp(col=F.col(col=col), format="yyyy-MM-dd HH:mm:ss 'UTC'"),
-        F.to_timestamp(col=F.col(col=col), format="yyyy-MM-dd'T'HH:mm:ssXXX"),
-        F.to_timestamp(col=F.col(col=col), format="yyyy-MM-dd'T'HH:mm:ss'Z'"),
-        F.to_timestamp(col=F.to_date(col=F.col(col=col), format="yyyy-MM-dd")),
+    c = F.col(col) if not isinstance(col, Column) else col
+
+    looks_like_dt = (
+        c.rlike(r"^\d{4}-\d{2}-\d{2}") |      # 2024-03-01...
+        c.rlike(r"^\d{1,2}/\d{1,2}/\d{2,4}") |# 01/03/2024...
+        c.rlike(r"^\d{10}(\.\d+)?$") |        # epoch seconds
+        c.rlike(r"^\d{13}$") |                # epoch ms
+        c.rlike(r"^\d{4}-\d{2}-\d{2}T")       # ISO-8601
     )
 
+    parsed = F.coalesce(
+        F.to_timestamp(c),                                # formatos padrão
+        F.to_timestamp(c, "yyyy-MM-dd HH:mm:ss"),
+        F.to_timestamp(c, "yyyy-MM-dd HH:mm:ss.SSS"),
+        F.to_timestamp(c, "yyyy-MM-dd HH:mm:ss 'UTC'"),
+        F.to_timestamp(c, "yyyy-MM-dd'T'HH:mm:ssXXX"),
+        F.to_timestamp(c, "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+        F.to_timestamp(F.to_date(c, "yyyy-MM-dd"))
+    )
+
+    return F.when(looks_like_dt, parsed).otherwise(F.lit(None).cast("timestamp"))
 
 def parse_dates(df: DataFrame, date_candidates: List[str]) -> DataFrame:
     for c in date_candidates:
@@ -28,15 +38,12 @@ def parse_dates(df: DataFrame, date_candidates: List[str]) -> DataFrame:
 
 def clean_number_str(col: Column) -> Column:
     s: Column = col.cast("string")
+    no_space = F.regexp_replace(s, r"\s+", "")
     return F.when(
-        condition=F.length(F.regexp_replace(str=s, pattern=r"\s+", replacement="")) == 0,
-        value=None,
+        F.length(no_space) == 0,
+        F.lit(None).cast("string")
     ).otherwise(
-        F.regexp_replace(
-            str=F.regexp_replace(str=s, pattern=r"\s+", replacement=""),
-            pattern=",",
-            replacement=".",
-        )
+        F.regexp_replace(no_space, ",", ".")
     )
 
 
