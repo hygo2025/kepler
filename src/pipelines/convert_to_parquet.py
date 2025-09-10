@@ -1,9 +1,9 @@
-
 from pathlib import Path
 
 import pandas as pd
 
 from src.utils.config import Config
+
 
 def convert_to_parquet(
         suffix: str,
@@ -23,6 +23,7 @@ def convert_to_parquet(
 
         out = out_base / f"{file.stem}.parquet"
         df.to_parquet(out, index=False, engine="pyarrow", compression="snappy")
+
 
 if __name__ == "__main__":
     convert_to_parquet(

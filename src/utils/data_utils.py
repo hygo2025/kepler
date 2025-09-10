@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Union
+
 from pyspark.sql import DataFrame, Column
 from pyspark.sql import functions as F
 
@@ -74,6 +75,7 @@ def to_bool_tolerant(col: Column) -> Column:
         condition=(s == F.lit("false")) | (s == F.lit("0")),
         value=F.lit(False),
     ).otherwise(F.lit(None).cast("boolean"))
+
 
 def trim_or_null(c: Union[str, Column]) -> Column:
     col = F.col(c) if not isinstance(c, Column) else c

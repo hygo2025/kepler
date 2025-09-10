@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Final, List, Union
+from typing import Final, List
+
 from pyspark.sql import DataFrame, Column
 from pyspark.sql import functions as F
 

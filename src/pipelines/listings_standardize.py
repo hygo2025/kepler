@@ -33,9 +33,10 @@ def coerce_schema(df):
     df = parse_dates(df=df, date_candidates=DATE_CANDIDATES)
 
     month_col: Column = (
-        F.when(condition=F.col('created_at').isNotNull(), value=F.date_format(date=F.col('created_at').cast("date"), format='yyyy-MM'))
-         .when(condition=F.col('dt').isNotNull(),        value=F.date_format(date=F.col('dt').cast("date"),        format='yyyy-MM'))
-         .otherwise(                                     value=F.date_format(date=F.col('updated_at').cast("date"), format='yyyy-MM'))
+        F.when(condition=F.col('created_at').isNotNull(),
+               value=F.date_format(date=F.col('created_at').cast("date"), format='yyyy-MM'))
+        .when(condition=F.col('dt').isNotNull(), value=F.date_format(date=F.col('dt').cast("date"), format='yyyy-MM'))
+        .otherwise(value=F.date_format(date=F.col('updated_at').cast("date"), format='yyyy-MM'))
     )
     df = df.withColumn(colName='month', col=month_col)
 
@@ -46,20 +47,24 @@ def amenities_explode(df):
     if 'amenities' not in df.columns:
         return None
     cleaned: DataFrame = (df
-        .withColumn(colName='amenities_norm', col=F.regexp_replace(str=F.col('amenities'), pattern=r"[\[\]']", replacement=""))
-        .withColumn(colName='amenities_norm', col=F.regexp_replace(str=F.col('amenities_norm'), pattern=r"\s+", replacement=" "))
-        .withColumn(colName='amenities_norm', col=F.trim(F.col('amenities_norm')))
-    )
+                          .withColumn(colName='amenities_norm',
+                                      col=F.regexp_replace(str=F.col('amenities'), pattern=r"[\[\]']", replacement=""))
+                          .withColumn(colName='amenities_norm',
+                                      col=F.regexp_replace(str=F.col('amenities_norm'), pattern=r"\s+",
+                                                           replacement=" "))
+                          .withColumn(colName='amenities_norm', col=F.trim(F.col('amenities_norm')))
+                          )
     exploded = (cleaned
-        .withColumn(colName='amenity', col=F.explode(
-            F.filter(
-                F.split(F.col('amenities_norm'), r"\s+"),
-                lambda x: (x.isNotNull()) & (F.length(x) > 0)
-            )
-        ))
-        .where(F.col('amenity').isNotNull() & (F.length('amenity') > 0))
-    )
+                .withColumn(colName='amenity', col=F.explode(
+        F.filter(
+            F.split(F.col('amenities_norm'), r"\s+"),
+            lambda x: (x.isNotNull()) & (F.length(x) > 0)
+        )
+    ))
+                .where(F.col('amenity').isNotNull() & (F.length('amenity') > 0))
+                )
     return exploded.drop('amenities_norm')
+
 
 def standardize_listings(df_raw: DataFrame) -> DataFrame:
     cols: List[str] = [c for c in ALL_COLS if c in df_raw.columns]

@@ -2,6 +2,7 @@ import argparse
 import os
 from pathlib import Path
 
+
 class Config:
     def __init__(self,
                  top_k: int = 10,
@@ -19,7 +20,7 @@ class Config:
         self.jar_path = jar_path
         self.data_path = data_path
         base = Path(__file__).resolve().parent
-        self.parquet_path =  (base / "../data").resolve()
+        self.parquet_path = (base / "../data").resolve()
         self.listings_path = f"{self.parquet_path}/listings"
         self.events_path = f"{self.parquet_path}/events"
         self.analytics_path = "../analytics"
