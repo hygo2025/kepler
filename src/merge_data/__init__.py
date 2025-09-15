@@ -8,14 +8,21 @@ from src.utils import make_spark
 
 def point_in_time_join(
         spark: SparkSession,
-        listings_path: str,
-        events_path: str,
         num_partitions: int = 512,
+        listings_path: str = None,
+        events_path: str = None,
 ) -> DataFrame:
     """
     Combina os dataframes de eventos e listings de forma otimizada para
     evitar data leakage, encontrando o snapshot mais recente para cada evento.
     """
+    events_df = (
+        spark.read
+        .option("mergeSchema", "true")
+        .parquet(events_path)
+        .withColumn("event_date", F.to_date(F.col("event_ts")))
+        .repartition(num_partitions, F.col("anonymized_listing_id"))
+    )
 
     listings_df = (
         spark.read
@@ -25,13 +32,6 @@ def point_in_time_join(
         .repartition(num_partitions, F.col("anonymized_listing_id"))
     )
 
-    events_df = (
-        spark.read
-        .option("mergeSchema", "true")
-        .parquet(events_path)
-        .withColumn("event_date", F.to_date(F.col("event_ts")))
-        .repartition(num_partitions, F.col("anonymized_listing_id"))
-    )
 
     listings_aliased = listings_df.select(
         [F.col(c).alias(f"listing_{c}") for c in listings_df.columns]
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     EVENTS_PATH = f"{data_path}/events"
     MERGED_DATA_PATH = f"{data_path}/enriched_events"
 
-    merged_data = point_in_time_join(spark, LISTINGS_PATH, EVENTS_PATH)
+    merged_data = point_in_time_join(spark, listings_path=LISTINGS_PATH, events_path=EVENTS_PATH)
 
     df_to_save = merged_data.withColumn("year", F.year(F.col("event_date"))) \
         .withColumn("month", F.month(F.col("event_date")))
