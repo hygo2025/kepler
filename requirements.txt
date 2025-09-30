@@ -1,0 +1,15 @@
+pyarrow
+pandas
+fastparquet
+numpy
+pytz
+PyYAML
+pyspark==4.0.0
+python-dateutil
+LibRecommender
+matplotlib
+tensorflow==2.15.1
+scikit-learn
+torch
+torchvision
+torchaudio
