@@ -18,7 +18,7 @@ def parse_ts_multi(col: Union[str, Column]) -> Column:
     )
 
     parsed = F.coalesce(
-        F.to_timestamp(c),                                # formatos padrão
+        F.to_timestamp(c),
         F.to_timestamp(c, "yyyy-MM-dd HH:mm:ss"),
         F.to_timestamp(c, "yyyy-MM-dd HH:mm:ss.SSS"),
         F.to_timestamp(c, "yyyy-MM-dd HH:mm:ss 'UTC'"),
