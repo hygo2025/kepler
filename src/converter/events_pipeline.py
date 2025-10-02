@@ -11,14 +11,34 @@ class EventsPipeline:
         self.listing_map = self.spark.read.parquet(self.paths["LISTING_ID_MAPPING_PATH"])
 
     def run(self):
-        raw_path = self.paths["EVENTS_RAW_PATH"] + "/*.csv.gz"
-        all_raw_events = read_csv_data(self.spark, raw_path, multiline=False)
+        sale_raw_path = self.paths["EVENTS_RAW_PATH"] + "/*.csv.gz"
+        rental_raw_path = self.paths["EVENTS_RAW_RENTAL_PATH"] + "/*.csv.gz"
 
-        cleaned_df = self._clean_data(all_raw_events)
-        df = cleaned_df.join(self.listing_map, on="anonymized_listing_id", how="inner")
+        sale_events_df = read_csv_data(self.spark, sale_raw_path, multiline=False)
+        sale_events_df = sale_events_df.withColumn("business_type", F.lit("SALE"))
 
-        df.write.mode("overwrite").partitionBy("dt").parquet(self.paths["EVENTS_PROCESSED_PATH"])
+        rental_events_df = read_csv_data(self.spark, rental_raw_path, multiline=False)
+        rental_events_df = rental_events_df.withColumn("business_type", F.lit("RENTAL"))
 
+        all_raw_events = sale_events_df.unionByName(rental_events_df)
+
+        print(f"Count of all events: {all_raw_events.count()}")
+
+        joined_df = all_raw_events.join(self.listing_map, on="anonymized_listing_id", how="inner")
+
+        print(f"Count of joined events: {joined_df.count()}")
+
+        final_df = self._clean_data(joined_df)
+
+        output_path = self.paths["EVENTS_PROCESSED_PATH"]
+        print(f"Salvando dataset final unificado em: {output_path}")
+        (
+            final_df.write
+            .mode("overwrite")
+            .partitionBy("dt")
+            .parquet(output_path)
+        )
+        print("Processamento de eventos concluído com sucesso.")
 
     def _clean_data(self, df: DataFrame) -> DataFrame:
         for name in ["anonymized_user_id", "anonymized_anonymous_id", "anonymized_listing_id"]:

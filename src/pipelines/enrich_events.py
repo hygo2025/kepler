@@ -3,20 +3,27 @@ from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 
 
+def create_and_apply_user_map(df: DataFrame) -> tuple[DataFrame, DataFrame]:
+    print("Iniciando mapeamento de 'unified_user_id' para 'user_numeric_id'...")
+    id_window = Window.orderBy(F.lit(1))
+    distinct_users = df.select("unified_user_id").distinct()
+    user_mapping_table = distinct_users.withColumn("user_numeric_id", F.row_number().over(id_window))
+    final_df = df.join(user_mapping_table, "unified_user_id", "inner")
+
+    return final_df, user_mapping_table
+
 def fill_user_id(raw_events: DataFrame) -> DataFrame:
-    """Preenche o user_id usando uma Window Function para performance máxima."""
     window_spec = Window.partitionBy("anonymous_id")
-    result = raw_events.withColumn(
-        "filled_user_id", F.first(F.col("user_id"), ignorenulls=True).over(window_spec)
+    df_with_filled_id = raw_events.withColumn(
+        "session_user_id", F.first(F.col("user_id"), ignorenulls=True).over(window_spec)
     )
-    result = result.withColumn(
-        "user_id",
-        F.when(F.col("user_id").isNull(), F.col("filled_user_id")).otherwise(
-            F.col("user_id")
-        ),
-    ).withColumn(
-        "user_id", F.coalesce(F.col("user_id"), F.col("anonymous_id"))
-    ).drop("filled_user_id")
+
+    df_with_unified_id = df_with_filled_id.withColumn(
+        "unified_user_id",
+        F.coalesce(F.col("user_id"), F.col("session_user_id"), F.col("anonymous_id"))
+    )
+
+    result = df_with_unified_id.drop("session_user_id")
     return result
 
 
@@ -74,6 +81,7 @@ def rename_and_drop_columns(
         .withColumnRenamed("anonymized_user_id", "user_id")
         .withColumnRenamed("anonymized_anonymous_id", "anonymous_id")
         .withColumnRenamed("anonymized_listing_id", "listing_id")
+        .withColumn("partition_date", F.col("dt"))
         .drop(
             "anonymized_session_id", "browser_family", "os_family",
             "is_bot", "event_date", "month", "listing_id_numeric"
@@ -103,14 +111,46 @@ def enrich_events(spark: SparkSession, paths: dict):
         users, events_enriched["user_id"] == users["user_anonymous_id"], "left"
     )
 
-    print(f"Salvando base de dados de ratings em: {paths['ENRICHED_EVENTS_PATH']}")
+    print(events_enriched.show(10))
+    final_events_df, user_mapping_table = create_and_apply_user_map(events_enriched)
 
-    (
-        events_enriched
-        .coalesce(32)
-        .write
-        .mode("overwrite")
-        .partitionBy("dt")
-        .option("compression", "snappy")
-        .parquet(paths["ENRICHED_EVENTS_PATH"])
+    final_events_df = (
+        final_events_df
+        .drop("dt", "weight","days_until_today","boost","created_at","updated_at","user_anonymous_id","user_user_id")
+        .withColumnRenamed("partition_date", "dt")
     )
+
+    final_output_path = paths['ENRICHED_EVENTS_PATH']
+    user_map_output_path = paths['USER_ID_MAPPING_PATH']
+
+    final_events_persisted = None
+    user_map_persisted = None
+    try:
+        print("Materializando DataFrames em cache...")
+        final_events_persisted = final_events_df.persist()
+        user_map_persisted = user_mapping_table.persist()
+
+        print(final_events_persisted.printSchema)
+
+        print(f"Salvando base de dados de ratings finais em: {final_output_path}")
+        (
+            final_events_persisted
+            .coalesce(4)
+            .write
+            .mode("overwrite")
+            .partitionBy("dt")
+            .option("compression", "snappy")
+            .parquet(final_output_path)
+        )
+
+        print(f"Salvando novo mapa de usuários unificados em: {user_map_output_path}")
+        (
+            user_map_persisted
+            .coalesce(1)
+            .write
+            .mode("overwrite")
+            .parquet(user_map_output_path)
+        )
+    finally:
+        if final_events_persisted: final_events_persisted.unpersist()
+        if user_map_persisted: user_map_persisted.unpersist()

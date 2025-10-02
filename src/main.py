@@ -8,19 +8,19 @@ from src.enum.models_enum import ModelsEnum
 from src.enum.operations_enum import OperationsEnum
 from src.models.rnn_4rec import rnn_4rec
 from src.pipelines.enrich_events import enrich_events
-from src.pipelines.user_session import make_user_session
+from src.converter.user_session import make_user_session
 from src.utils.spark_session import make_spark
 
 paths = {
     "LISTINGS_RAW_PATH": os.getenv("LISTINGS_RAW_PATH"),
     "EVENTS_RAW_PATH": os.getenv("EVENTS_RAW_PATH"),
+    "EVENTS_RAW_RENTAL_PATH": os.getenv("EVENTS_RAW_RENTAL_PATH"),
     "EVENTS_PROCESSED_PATH": os.getenv("EVENTS_PROCESSED_PATH"),
     "LISTINGS_PROCESSED_PATH": os.getenv("LISTINGS_PROCESSED_PATH"),
     "ENRICHED_EVENTS_PATH": os.getenv("ENRICHED_EVENTS_PATH"),
     "USER_SESSIONS_PATH": os.getenv("USER_SESSIONS_PATH"),
     "LISTING_ID_MAPPING_PATH": os.getenv("LISTING_ID_MAPPING_PATH"),
     "USER_ID_MAPPING_PATH": os.getenv("USER_ID_MAPPING_PATH"),
-    "ANONYMOUS_ID_MAPPING_PATH": os.getenv("ANONYMOUS_ID_MAPPING_PATH"),
 }
 
 def parse_and_validate(input_str, enum_class, item_name):
