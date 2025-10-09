@@ -1,18 +1,18 @@
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
 
+from src.utils.enviroment import listing_id_mapping_path, events_raw_path, events_raw_rental_path, events_processed_path
 from src.utils.spark_utils import read_csv_data
 
 
 class EventsPipeline:
-    def __init__(self, spark: SparkSession, paths: dict):
+    def __init__(self, spark: SparkSession):
         self.spark = spark
-        self.paths = paths
-        self.listing_map = self.spark.read.parquet(self.paths["LISTING_ID_MAPPING_PATH"])
+        self.listing_map = self.spark.read.parquet(listing_id_mapping_path())
 
     def run(self):
-        sale_raw_path = self.paths["EVENTS_RAW_PATH"] + "/*.csv.gz"
-        rental_raw_path = self.paths["EVENTS_RAW_RENTAL_PATH"] + "/*.csv.gz"
+        sale_raw_path = events_raw_path() + "/*.csv.gz"
+        rental_raw_path = events_raw_rental_path() + "/*.csv.gz"
 
         sale_events_df = read_csv_data(self.spark, sale_raw_path, multiline=False)
         sale_events_df = sale_events_df.withColumn("business_type", F.lit("SALE"))
@@ -30,7 +30,7 @@ class EventsPipeline:
 
         final_df = self._clean_data(joined_df)
 
-        output_path = self.paths["EVENTS_PROCESSED_PATH"]
+        output_path = events_processed_path()
         print(f"Salvando dataset final unificado em: {output_path}")
         (
             final_df.write

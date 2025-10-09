@@ -1,15 +1,17 @@
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
+from src.utils.enviroment import user_sessions_path, events_processed_path
 
-def make_user_session(spark: SparkSession, paths: dict) -> None:
+
+def make_user_session(spark: SparkSession) -> None:
     num_partitions = 512
     collision_threshold = 7
-    output_path = paths["USER_SESSIONS_PATH"]
+    output_path = user_sessions_path()
     raw_events = (
         spark.read
         .option("mergeSchema", "true")
-        .parquet(paths["EVENTS_PROCESSED_PATH"])
+        .parquet(events_processed_path())
         .repartition(num_partitions, F.col("anonymized_listing_id"))
     )
 

@@ -36,9 +36,9 @@ clean:
 remove: clean
 	rm -f $(REQUIREMENTS_FILE)
 
-.PHONY: to_parquet #01
-to_parquet:
-	export $(shell cat .env) && $(VENV_DIR)/bin/python src/main.py -o to_parquet
+.PHONY: prepare_data #01
+prepare_data:
+	export $(shell cat .env) && $(VENV_DIR)/bin/python src/main.py -o prepare_data
 
 .PHONY: make_user_sessions 02
 make_user_sessions:

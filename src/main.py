@@ -1,27 +1,11 @@
 import argparse
-import os
 
-import tensorflow as tf
-
-from src.converter import convert_to_parquet
+from src.converter import prepare_data
 from src.enum.models_enum import ModelsEnum
 from src.enum.operations_enum import OperationsEnum
-from src.models.rnn_4rec import rnn_4rec
-from src.pipelines.enrich_events import enrich_events
+from src.converter.enrich_events import enrich_events
 from src.converter.user_session import make_user_session
 from src.utils.spark_session import make_spark
-
-paths = {
-    "LISTINGS_RAW_PATH": os.getenv("LISTINGS_RAW_PATH"),
-    "EVENTS_RAW_PATH": os.getenv("EVENTS_RAW_PATH"),
-    "EVENTS_RAW_RENTAL_PATH": os.getenv("EVENTS_RAW_RENTAL_PATH"),
-    "EVENTS_PROCESSED_PATH": os.getenv("EVENTS_PROCESSED_PATH"),
-    "LISTINGS_PROCESSED_PATH": os.getenv("LISTINGS_PROCESSED_PATH"),
-    "ENRICHED_EVENTS_PATH": os.getenv("ENRICHED_EVENTS_PATH"),
-    "USER_SESSIONS_PATH": os.getenv("USER_SESSIONS_PATH"),
-    "LISTING_ID_MAPPING_PATH": os.getenv("LISTING_ID_MAPPING_PATH"),
-    "USER_ID_MAPPING_PATH": os.getenv("USER_ID_MAPPING_PATH"),
-}
 
 def parse_and_validate(input_str, enum_class, item_name):
     validated_items = []
@@ -52,15 +36,11 @@ def parse_and_validate_models(models_str):
 def run_spark_job(job_func, *args, **kwargs):
     spark = make_spark()
     try:
-        job_func(spark, paths, *args, **kwargs)
+        job_func(spark, *args, **kwargs)
     finally:
         spark.stop()
 
 def main():
-    for key, value in paths.items():
-        if value is None:
-            raise EnvironmentError(f"A variável de ambiente '{key}' não está definida.")
-
     parser = argparse.ArgumentParser(
         description="Processa dados com base nas operações passadas."
     )
@@ -91,24 +71,18 @@ def main():
     print(args  )
 
     for operation in operations:
-        if operation == OperationsEnum.TO_PARQUET:
-            run_spark_job(convert_to_parquet)
-        if operation == OperationsEnum.MAKE_USER_SESSIONS:
-            run_spark_job(make_user_session)
-        if operation == OperationsEnum.ENRICH_EVENTS:
-            run_spark_job(enrich_events)
+        if operation == OperationsEnum.PREPARE_DATA:
+            run_spark_job(prepare_data)
 
-    for model in models:
-        print("Versão do TensorFlow:", tf.__version__)
-        gpu_devices = tf.config.list_physical_devices('GPU')
-        print("Num GPUs Disponíveis: ", len(gpu_devices))
-        if gpu_devices:
-            print("Detalhes da GPU:", gpu_devices)
-        else:
-            print("Nenhuma GPU foi encontrada pelo TensorFlow.")
+    # for model in models:
+    #     print("Versão do TensorFlow:", tf.__version__)
+    #     gpu_devices = tf.config.list_physical_devices('GPU')
+    #     print("Num GPUs Disponíveis: ", len(gpu_devices))
+    #     if gpu_devices:
+    #         print("Detalhes da GPU:", gpu_devices)
+    #     else:
+    #         print("Nenhuma GPU foi encontrada pelo TensorFlow.")
 
-        if model == ModelsEnum.RNN4Rec:
-            rnn_4rec(paths)
 
 if __name__ == "__main__":
     main()

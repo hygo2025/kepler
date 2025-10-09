@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import List, Union
 
 from pyspark.sql import DataFrame, Column
@@ -88,3 +89,8 @@ def trim_or_null(c: Union[str, Column]) -> Column:
     col = F.col(c) if not isinstance(c, Column) else c
     s = F.trim(col.cast("string"))
     return F.when(F.length(s) > 0, s).otherwise(F.lit(None).cast("string"))
+
+def ensure_directory_exists(file_path: str) -> None:
+    directory = os.path.dirname(file_path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)

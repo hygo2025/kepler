@@ -2,6 +2,9 @@ from itertools import chain
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 
+from src.utils.enviroment import user_sessions_path, listings_processed_path, events_processed_path, \
+    enriched_events_path, user_id_mapping_path
+
 
 def create_and_apply_user_map(df: DataFrame) -> tuple[DataFrame, DataFrame]:
     print("Iniciando mapeamento de 'unified_user_id' para 'user_numeric_id'...")
@@ -89,10 +92,10 @@ def rename_and_drop_columns(
     )
     return users, listings, raw_events
 
-def enrich_events(spark: SparkSession, paths: dict):
-    users_raw = spark.read.option("mergeSchema", "true").parquet(paths["USER_SESSIONS_PATH"])
-    listings_raw = spark.read.option("mergeSchema", "true").parquet(paths["LISTINGS_PROCESSED_PATH"])
-    raw_events_raw = spark.read.option("mergeSchema", "true").parquet(paths["EVENTS_PROCESSED_PATH"])
+def enrich_events(spark: SparkSession):
+    users_raw = spark.read.option("mergeSchema", "true").parquet(user_sessions_path())
+    listings_raw = spark.read.option("mergeSchema", "true").parquet(listings_processed_path())
+    raw_events_raw = spark.read.option("mergeSchema", "true").parquet(events_processed_path())
 
     users, listings, raw_events = rename_and_drop_columns(
         users=users_raw,
@@ -120,8 +123,8 @@ def enrich_events(spark: SparkSession, paths: dict):
         .withColumnRenamed("partition_date", "dt")
     )
 
-    final_output_path = paths['ENRICHED_EVENTS_PATH']
-    user_map_output_path = paths['USER_ID_MAPPING_PATH']
+    final_output_path = enriched_events_path()
+    user_map_output_path = user_id_mapping_path()
 
     final_events_persisted = None
     user_map_persisted = None
