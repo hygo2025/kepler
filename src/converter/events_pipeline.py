@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
 
-from src.utils.enviroment import listing_id_mapping_path, events_raw_path, events_raw_rental_path, events_processed_path
+from src.utils.enviroment import listing_id_mapping_path, events_raw_path, events_processed_path
 from src.utils.spark_utils import read_csv_data
 
 
@@ -12,15 +12,7 @@ class EventsPipeline:
 
     def run(self):
         sale_raw_path = events_raw_path() + "/*.csv.gz"
-        rental_raw_path = events_raw_rental_path() + "/*.csv.gz"
-
-        sale_events_df = read_csv_data(self.spark, sale_raw_path, multiline=False)
-        sale_events_df = sale_events_df.withColumn("business_type", F.lit("SALE"))
-
-        rental_events_df = read_csv_data(self.spark, rental_raw_path, multiline=False)
-        rental_events_df = rental_events_df.withColumn("business_type", F.lit("RENTAL"))
-
-        all_raw_events = sale_events_df.unionByName(rental_events_df)
+        all_raw_events = read_csv_data(self.spark, sale_raw_path, multiline=False)
 
         print(f"Count of all events: {all_raw_events.count()}")
 

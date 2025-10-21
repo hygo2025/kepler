@@ -6,9 +6,6 @@ def listings_raw_path():
 def events_raw_path():
     return os.getenv("EVENTS_RAW_PATH")
 
-def events_raw_rental_path():
-    return os.getenv("EVENTS_RAW_RENTAL_PATH")
-
 def events_processed_path():
     return os.getenv("EVENTS_PROCESSED_PATH")
 

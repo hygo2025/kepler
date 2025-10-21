@@ -9,5 +9,5 @@ from src.converter.user_session import make_user_session
 def prepare_data(spark: SparkSession):
     ListingsPipeline(spark=spark).run()
     EventsPipeline(spark=spark).run()
-    make_user_session(spark=spark)
-    enrich_events(spark=spark)
+    # make_user_session(spark=spark)
+    # enrich_events(spark=spark)

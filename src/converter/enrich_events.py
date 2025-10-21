@@ -30,44 +30,6 @@ def fill_user_id(raw_events: DataFrame) -> DataFrame:
     return result
 
 
-def boost(df: DataFrame, boost_period: int = 7, boost: float = 1.3) -> DataFrame:
-    df = df.withColumn("days_until_today", F.datediff(F.current_date(), F.col("dt")))
-    df = df.withColumn(
-        "boost",
-        F.when(
-            F.col("days_until_today") <= boost_period,
-            F.col("weight") * boost,
-        ).otherwise(
-            F.col("weight")
-            * F.exp((-F.col("days_until_today") + boost_period) / 270.0)
-        ),
-    )
-    return df
-
-
-def to_enriched_event(raw_events: DataFrame) -> DataFrame:
-    def create_ratings_map() -> F.Column:
-        return F.create_map(
-            [
-                F.lit(x)
-                for x in chain(
-                *{
-                    "VISIT": 0.1, "LEAD": 1.0, "LEAD_IDENTIFIED": 2.0,
-                    "LEAD_INTENTION": 0.25, "FAVORITE": 0.25,
-                    "PREVIEW": 0.075, "OTHER": 0.075,
-                }.items()
-            )
-            ]
-        )
-
-    raw_events = fill_user_id(raw_events).withColumn(
-        "weight", create_ratings_map()[F.col("event_type")]
-    )
-    raw_events = boost(df=raw_events)
-    raw_events = raw_events.withColumn("rating", F.col("boost"))
-    return raw_events
-
-
 def rename_and_drop_columns(
         users: DataFrame, listings: DataFrame, raw_events: DataFrame
 ) -> tuple:
@@ -86,8 +48,7 @@ def rename_and_drop_columns(
         .withColumnRenamed("anonymized_listing_id", "listing_id")
         .withColumn("partition_date", F.col("dt"))
         .drop(
-            "anonymized_session_id", "browser_family", "os_family",
-            "is_bot", "event_date", "month", "listing_id_numeric"
+            "anonymized_session_id", "is_bot", "event_date", "month", "listing_id_numeric"
         )
     )
     return users, listings, raw_events
@@ -95,33 +56,35 @@ def rename_and_drop_columns(
 def enrich_events(spark: SparkSession):
     users_raw = spark.read.option("mergeSchema", "true").parquet(user_sessions_path())
     listings_raw = spark.read.option("mergeSchema", "true").parquet(listings_processed_path())
-    raw_events_raw = spark.read.option("mergeSchema", "true").parquet(events_processed_path())
+    events_raw = spark.read.option("mergeSchema", "true").parquet(events_processed_path())
 
     users, listings, raw_events = rename_and_drop_columns(
         users=users_raw,
         listings=listings_raw,
-        raw_events=raw_events_raw,
+        raw_events=events_raw,
     )
 
     raw_events = raw_events.drop("dt").withColumn(
         "dt", F.from_unixtime(F.col("collector_timestamp") / 1000).cast("timestamp")
     )
-    events_enriched = to_enriched_event(raw_events=raw_events)
-    events_enriched = events_enriched.filter(F.col("rating") > 0.001)
+    events_enriched = fill_user_id(raw_events=raw_events)
     events_enriched = events_enriched.join(listings, on="listing_id", how="inner")
 
     events_enriched = events_enriched.join(
         users, events_enriched["user_id"] == users["user_anonymous_id"], "left"
     )
 
-    print(events_enriched.show(10))
     final_events_df, user_mapping_table = create_and_apply_user_map(events_enriched)
 
     final_events_df = (
         final_events_df
-        .drop("dt", "weight","days_until_today","boost","created_at","updated_at","user_anonymous_id","user_user_id")
+        .drop("dt","created_at","updated_at","user_anonymous_id","user_user_id")
         .withColumnRenamed("partition_date", "dt")
     )
+
+    print(f"\nqtd antes: {final_events_df.count()}\n")
+    final_events_df = final_events_df.filter(F.col("name_raw") != "GalleryClicked")
+    print(f"\nqtd antes: {final_events_df.count()}\n")
 
     final_output_path = enriched_events_path()
     user_map_output_path = user_id_mapping_path()
@@ -133,7 +96,7 @@ def enrich_events(spark: SparkSession):
         final_events_persisted = final_events_df.persist()
         user_map_persisted = user_mapping_table.persist()
 
-        print(final_events_persisted.printSchema)
+        print(final_events_persisted.printSchema())
 
         print(f"Salvando base de dados de ratings finais em: {final_output_path}")
         (
