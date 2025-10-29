@@ -3,7 +3,7 @@ from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 
 from src.utils.enviroment import user_sessions_path, listings_processed_path, events_processed_path, \
-    enriched_events_path, user_id_mapping_path
+    enriched_events_path, user_id_mapping_path, session_id_mapping_path
 
 
 def create_and_apply_user_map(df: DataFrame) -> tuple[DataFrame, DataFrame]:
@@ -14,6 +14,15 @@ def create_and_apply_user_map(df: DataFrame) -> tuple[DataFrame, DataFrame]:
     final_df = df.join(user_mapping_table, "unified_user_id", "inner")
 
     return final_df, user_mapping_table
+
+def create_and_apply_session_map(df: DataFrame) -> tuple[DataFrame, DataFrame]:
+    print("Iniciando mapeamento de 'anonymized_session_id' para 'session_numeric_id'...")
+    id_window = Window.orderBy(F.lit(1))
+    distinct_sessions = df.select("anonymized_session_id").distinct()
+    session_mapping_table = distinct_sessions.withColumn("session_numeric_id", F.row_number().over(id_window))
+    final_df = df.join(session_mapping_table, "anonymized_session_id", "inner")
+
+    return final_df, session_mapping_table
 
 def fill_user_id(raw_events: DataFrame) -> DataFrame:
     window_spec = Window.partitionBy("anonymous_id")
@@ -48,7 +57,7 @@ def rename_and_drop_columns(
         .withColumnRenamed("anonymized_listing_id", "listing_id")
         .withColumn("partition_date", F.col("dt"))
         .drop(
-            "anonymized_session_id", "is_bot", "event_date", "month", "listing_id_numeric"
+            "usage_types", "is_bot", "event_date", "month", "listing_id_numeric"
         )
     )
     return users, listings, raw_events
@@ -57,7 +66,7 @@ def enrich_events(spark: SparkSession):
     users_raw = spark.read.option("mergeSchema", "true").parquet(user_sessions_path())
     listings_raw = spark.read.option("mergeSchema", "true").parquet(listings_processed_path())
     events_raw = spark.read.option("mergeSchema", "true").parquet(events_processed_path())
-
+    print(events_raw.show(10, truncate=False))
     users, listings, raw_events = rename_and_drop_columns(
         users=users_raw,
         listings=listings_raw,
@@ -73,8 +82,17 @@ def enrich_events(spark: SparkSession):
     events_enriched = events_enriched.join(
         users, events_enriched["user_id"] == users["user_anonymous_id"], "left"
     )
+    print("Esquema dos eventos enriquecidos:")
+    print(events_enriched.printSchema())
 
-    final_events_df, user_mapping_table = create_and_apply_user_map(events_enriched)
+    events_with_user_map, user_mapping_table = create_and_apply_user_map(events_enriched)
+
+    print("Esquema dos eventos com mapeamento de usuário aplicado:")
+    print(events_with_user_map.printSchema())
+    final_events_df, session_mapping_table = create_and_apply_session_map(events_with_user_map)
+
+    print("Esquema dos eventos com mapeamento de sessão aplicado:")
+    print(final_events_df.printSchema())
 
     final_events_df = (
         final_events_df
@@ -82,19 +100,18 @@ def enrich_events(spark: SparkSession):
         .withColumnRenamed("partition_date", "dt")
     )
 
-    print(f"\nqtd antes: {final_events_df.count()}\n")
-    final_events_df = final_events_df.filter(F.col("name_raw") != "GalleryClicked")
-    print(f"\nqtd antes: {final_events_df.count()}\n")
-
     final_output_path = enriched_events_path()
     user_map_output_path = user_id_mapping_path()
+    session_map_output_path = session_id_mapping_path()
 
     final_events_persisted = None
     user_map_persisted = None
+    session_map_persisted = None
     try:
         print("Materializando DataFrames em cache...")
         final_events_persisted = final_events_df.persist()
         user_map_persisted = user_mapping_table.persist()
+        session_map_persisted = session_mapping_table.persist()
 
         print(final_events_persisted.printSchema())
 
@@ -117,6 +134,16 @@ def enrich_events(spark: SparkSession):
             .mode("overwrite")
             .parquet(user_map_output_path)
         )
+
+        print(f"Salvando novo mapa de sessões unificadas em: {session_map_output_path}")
+        (
+            session_map_persisted
+            .coalesce(1)
+            .write
+            .mode("overwrite")
+            .parquet(session_map_output_path)
+        )
     finally:
         if final_events_persisted: final_events_persisted.unpersist()
         if user_map_persisted: user_map_persisted.unpersist()
+        if session_map_persisted: session_map_persisted.unpersist()

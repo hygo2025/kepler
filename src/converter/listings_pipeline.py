@@ -110,7 +110,7 @@ class ListingsPipeline:
             df_final_persisted = df_final.persist()
             mapping_table_persisted = mapping_table.persist()
 
-            df_final_persisted.coalesce(16).write.mode("overwrite").parquet(final_path)
+            df_final_persisted.coalesce(1).write.mode("overwrite").parquet(final_path)
             mapping_table_persisted.write.mode("overwrite").parquet(mapping_path)
         finally:
             if df_final_persisted: df_final_persisted.unpersist()

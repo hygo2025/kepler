@@ -13,6 +13,7 @@ class EventsPipeline:
     def run(self):
         sale_raw_path = events_raw_path() + "/*.csv.gz"
         all_raw_events = read_csv_data(self.spark, sale_raw_path, multiline=False)
+        all_raw_events = all_raw_events.filter(F.col("anonymized_user_id").isNotNull())
 
         print(f"Count of all events: {all_raw_events.count()}")
 

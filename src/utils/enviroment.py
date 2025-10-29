@@ -26,3 +26,9 @@ def user_id_mapping_path():
 
 def geo_data_path():
     return os.getenv("GEO_DATA_PATH")
+
+def session_id_mapping_path():
+    return os.getenv("SESSION_ID_MAPPING_PATH")
+
+def enriched_events_vix_path():
+    return os.getenv("ENRICHED_EVENTS_VIX_PATH")

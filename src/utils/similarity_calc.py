@@ -81,7 +81,7 @@ class PropertySimilarityCalculator:
     def analyze_recommendations(self, base_property_id, recommended_ids, weights):
         results = []
         for rec_id in recommended_ids:
-            if base_property_id == rec_id:  # Não comparar um imóvel consigo mesmo
+            if base_property_id == rec_id:
                 continue
 
             score = self.calculate_similarity(base_property_id, rec_id, weights)
