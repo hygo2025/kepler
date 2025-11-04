@@ -1,10 +1,8 @@
 import argparse
 
-from src.converter import prepare_data
 from src.enum.models_enum import ModelsEnum
 from src.enum.operations_enum import OperationsEnum
-from src.converter.enrich_events import enrich_events
-from src.converter.user_session import make_user_session
+from src.pipelines import prepare_data
 from src.utils.spark_session import make_spark
 
 def parse_and_validate(input_str, enum_class, item_name):

@@ -1,83 +1,138 @@
+from __future__ import annotations
+
 import json
 import os
+import requests
+import time
 
 import pandas as pd
-from geopy.extra.rate_limiter import RateLimiter
-from geopy.geocoders import Nominatim
 from tqdm.auto import tqdm
 
 from src.utils.data_utils import ensure_directory_exists
 from src.utils.enviroment import geo_data_path
 
-CACHE_FILE_PATH = os.path.join(geo_data_path(), "geocoding_cache.csv")
-ensure_directory_exists(CACHE_FILE_PATH)
+CEP_CACHE_PATH = os.path.join(geo_data_path(), "cep_geocache.csv")
+ensure_directory_exists(CEP_CACHE_PATH)
+CEP_CACHE_COLUMNS = [
+    'cep',
+    'state',
+    'city',
+    'neighborhood',
+    'street',
+    'service',
+    'location_type',
+    'longitude',
+    'latitude',
+    'raw_data_json'
+]
 
-def load_geo_cache() -> pd.DataFrame:
-    if os.path.exists(CACHE_FILE_PATH):
-        cache_df = pd.read_csv(CACHE_FILE_PATH).fillna('')
-    else:
-        cache_df = pd.DataFrame(columns=[
-            "state", "city", "neighborhood",
-            "geopoint", "full_address", "raw_data_json"
-        ])
-    return cache_df
+def _geocode_cep_brasilapi(cep: str) -> dict | None:
+    if not cep or not cep.isdigit():
+        return None
+
+    url = f"https://brasilapi.com.br/api/cep/v2/{cep}"
+
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+
+        data = response.json()
+
+        flat_data = {
+            'cep': data.get('cep'),
+            'state': data.get('state'),
+            'city': data.get('city'),
+            'neighborhood': data.get('neighborhood'),
+            'street': data.get('street'),
+            'service': data.get('service'),
+            'location_type': None,
+            'longitude': None,
+            'latitude': None,
+            'raw_data_json': json.dumps(data)
+        }
+
+        if data.get("location"):
+            flat_data['location_type'] = data["location"].get("type")
+
+            if data["location"].get("coordinates"):
+                coords = data["location"]["coordinates"]
+                flat_data['longitude'] = coords.get("longitude")
+                flat_data['latitude'] = coords.get("latitude")
+
+        return flat_data
+
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            print(f"CEP {cep} não encontrado na BrasilAPI.")
+        else:
+            print(f"Erro HTTP ao buscar CEP {cep}: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"Erro de conexão ao buscar CEP {cep}: {e}")
+
+    return None
 
 
-def geocode_new_locations(new_locs, cache_df, checkpoint_interval=5):
-    if not new_locs:
-        print("✨ Todas as localizações já estão no cache. Nada a fazer.")
+def load_cep_cache() -> pd.DataFrame:
+    print(f"Carregando cache de CEPs de: {CEP_CACHE_PATH}")
+
+    if not os.path.exists(CEP_CACHE_PATH):
+        print("Arquivo de cache de CEPs não encontrado. Criando um novo.")
+        return pd.DataFrame(columns=CEP_CACHE_COLUMNS)
+
+    try:
+        cache_df = pd.read_csv(CEP_CACHE_PATH, dtype=str)
+        cache_df = cache_df.reindex(columns=CEP_CACHE_COLUMNS)
+        cache_df = cache_df.fillna('')
+        cache_df['cep'] = cache_df['cep'].astype(str)
+
+        print(f"Cache de CEPs carregado. {len(cache_df)} registros encontrados.")
         return cache_df
 
-    print(f"Geocodificando {len(new_locs)} novas localidades...")
+    except Exception as e:
+        print(f"Erro ao ler cache de CEPs, iniciando um novo: {e}")
+        return pd.DataFrame(columns=CEP_CACHE_COLUMNS)
 
-    geolocator = Nominatim(user_agent="listing_similarity_app/1.0")
-    geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1.0)
 
-    new_cache = []
-    total = len(new_locs)
+def geocode_new_ceps(new_ceps_list: list, cache_df: pd.DataFrame, checkpoint_interval=5) -> pd.DataFrame:
+    if not new_ceps_list:
+        print("Nenhum CEP novo para geocodificar.")
+        return cache_df
 
-    for i, (state, city, neighborhood) in enumerate(
-        tqdm(new_locs, desc="Geocodificando", unit="local")
-    ):
-        query = f"{neighborhood}, {city}, {state}, Brazil"
-        try:
-            loc = geocode(query)
-            if loc:
-                new_cache.append({
-                    "state": state,
-                    "city": city,
-                    "neighborhood": neighborhood,
-                    "geopoint": f"{loc.longitude},{loc.latitude}",
-                    "full_address": loc.address,
-                    "raw_data_json": json.dumps(loc.raw, ensure_ascii=False)
-                })
-            else:
-                new_cache.append({
-                    "state": state,
-                    "city": city,
-                    "neighborhood": neighborhood,
-                    "geopoint": "",
-                    "full_address": "",
-                    "raw_data_json": ""
-                })
-        except Exception as e:
-            print(f"Erro ao geocodificar '{query}': {e}")
+    print(f"Geocodificando {len(new_ceps_list)} novos CEPs...")
+
+    new_results = []
+    total = len(new_ceps_list)
+
+    updated_cache = cache_df.copy()
+
+    for i, cep in enumerate(tqdm(new_ceps_list, desc="Geocodificando CEPs")):
+        api_data = _geocode_cep_brasilapi(cep)
+
+        if api_data:
+            new_results.append(api_data)
+        else:
+            failed_entry = {col: '' for col in CEP_CACHE_COLUMNS}
+            failed_entry['cep'] = cep
+            new_results.append(failed_entry)
+
+        time.sleep(0.05)
 
         if (i + 1) % checkpoint_interval == 0 or (i + 1) == total:
-            temp_df = pd.DataFrame(new_cache)
-            updated_cache = pd.concat([cache_df, temp_df], ignore_index=True)
-            updated_cache.drop_duplicates(
-                subset=["state", "city", "neighborhood"], keep="last", inplace=True
-            )
-            updated_cache.sort_values(
-                by=["state", "city", "neighborhood"], inplace=True
-            )
-            updated_cache.to_csv(CACHE_FILE_PATH, index=False)
-            print(f"\nCheckpoint salvo ({i + 1}/{total}) em '{CACHE_FILE_PATH}'")
 
-    print(f"Geocodificação concluída. {len(new_cache)} novas entradas adicionadas.")
+            if not new_results:
+                continue
+
+            temp_df = pd.DataFrame(new_results, columns=CEP_CACHE_COLUMNS)
+            updated_cache = pd.concat([updated_cache, temp_df], ignore_index=True)
+            updated_cache.drop_duplicates(subset=["cep"], keep="last", inplace=True)
+            updated_cache.sort_values(by=["cep"], inplace=True)
+
+            try:
+                updated_cache.to_csv(CEP_CACHE_PATH, index=False)
+            except Exception as e:
+                print(f"\nERRO: Não foi possível salvar o checkpoint de CEPs: {e}")
+
+            new_results = []
+
+    print(f"Geocodificação de CEPs concluída.")
     return updated_cache
-
-
-
-

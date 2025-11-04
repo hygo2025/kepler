@@ -1,14 +1,15 @@
-
 from pyspark.sql import DataFrame, Window
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.functions import col, lower, regexp_replace, trim
+from pyspark.sql.functions import col, lower, regexp_replace, trim, lit
 from pyspark.sql.types import StringType
 
 from src.utils.enviroment import listing_id_mapping_path, listings_raw_path
 from src.utils.enviroment import listings_processed_path
+from src.utils.geocode import (
+    load_cep_cache, geocode_new_ceps
+)
 from src.utils.spark_utils import read_csv_data
-from src.utils.geocode import load_geo_cache, geocode_new_locations
 
 
 def normalize_spark_column(df, col_name):
@@ -20,38 +21,44 @@ def normalize_spark_column(df, col_name):
 
 def enrich_listings(spark: SparkSession, df: DataFrame):
     df = df.dropna(subset=["state", "city", "neighborhood"])
-
     for c in ["state", "city", "neighborhood"]:
         df = normalize_spark_column(df, c)
 
-    cache_df = load_geo_cache()
-    cache_keys = set(zip(cache_df.state, cache_df.city, cache_df.neighborhood))
+    print("Iniciando geocodificação por CEP (zip_code)...")
+    if "zip_code" in df.columns:
+        df_final = df.withColumn("cep", regexp_replace(col("zip_code"), "[^0-9]", ""))
+    else:
+        df_final = df.withColumn("cep", lit(None).cast(StringType()))
 
-    print("Coletando localidades únicas para geocodificação...")
-    unique_locations = df.select("state", "city", "neighborhood").distinct().toPandas()
+    cache_df_cep = load_cep_cache()
+    cache_keys_cep = set(cache_df_cep.cep)
 
-    new_locs = [
-        (r.state, r.city, r.neighborhood)
-        for r in unique_locations.itertuples(index=False)
-        if (r.state, r.city, r.neighborhood) not in cache_keys
+    unique_ceps = df_final.select("cep").filter(col("cep") != "").distinct().toPandas()
+
+    new_ceps = [
+        r.cep
+        for r in unique_ceps.itertuples(index=False)
+        if r.cep and r.cep not in cache_keys_cep
     ]
 
-    updated_cache = geocode_new_locations(new_locs, cache_df)
+    updated_cache_cep = geocode_new_ceps(new_ceps, cache_df_cep)
 
-    print("Fazendo join dos resultados de geocodificação...")
-    cache_spark = spark.createDataFrame(
-        updated_cache[["state", "city", "neighborhood", "geopoint"]]
+    cols_to_select = ['cep', 'state', 'city', 'neighborhood', 'street', 'longitude', 'latitude']
+
+    spark_cache_cep = spark.createDataFrame(updated_cache_cep).select(cols_to_select)
+
+    cols_to_drop = ['state', 'city', 'neighborhood', 'zip_code']
+
+    df_merged = df_final.drop(*cols_to_drop).join(
+        spark_cache_cep,
+        on='cep',
+        how='left'
     )
-    df_final = (
-        df.join(cache_spark, on=["state", "city", "neighborhood"], how="left")
-        .withColumn("geopoint", col("geopoint").cast(StringType()))
-    )
 
-    df_final = df_final.fillna({"geopoint": ""})
+    df_merged.printSchema()
 
-    df_final = df_final.filter(col("geopoint") != "")
+    return df_merged
 
-    return df_final
 
 class ListingsPipeline:
     def __init__(self, spark: SparkSession):
@@ -60,11 +67,20 @@ class ListingsPipeline:
     def run(self):
         raw_path = listings_raw_path() + "/*.csv.gz"
         all_raw_listings = read_csv_data(self.spark, raw_path, multiline=True)
+        all_raw_listings = all_raw_listings.filter(
+            (col("status") != "DRAFT") & (col("status") != "BLOCKED")
+        )
+
+        # all_raw_listings = all_raw_listings.filter(
+        #     (col("state") == "Espírito Santo") & (col("city") == "Vila Velha")
+        # )
 
         cleaned_listings = self._clean_data(all_raw_listings)
         final_df, mapping_table = self._deduplicate_and_map_ids(cleaned_listings)
         final_df = final_df.drop("status", "floors", "ceiling_height")
+
         final_df = enrich_listings(self.spark, final_df)
+
         self._save_results(final_df, mapping_table)
 
     def _clean_data(self, df: DataFrame) -> DataFrame:
@@ -86,7 +102,9 @@ class ListingsPipeline:
         return df
 
     def _deduplicate_and_map_ids(self, df: DataFrame) -> tuple[DataFrame, DataFrame]:
+        df = df.filter(F.col("status") == "ACTIVE")
         window_spec = Window.partitionBy("anonymized_listing_id").orderBy(F.col("updated_at").desc())
+
         latest_df = (
             df.withColumn("rank", F.row_number().over(window_spec))
             .filter(F.col("rank") == 1)

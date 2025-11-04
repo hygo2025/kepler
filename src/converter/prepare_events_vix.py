@@ -5,7 +5,7 @@ from pyspark.sql import SparkSession
 from src.utils.enviroment import enriched_events_vix_path, enriched_events_path
 
 
-def prepare_events_vix(spark: SparkSession):
+def standardize_events(spark: SparkSession):
     print(enriched_events_path())
     df = spark.read.option("mergeSchema", "true").parquet(enriched_events_path())
     columns_to_drop: List[str] = [
@@ -18,8 +18,6 @@ def prepare_events_vix(spark: SparkSession):
         "browser_family",
         "os_family",
         "collector_timestamp",
-        "state",
-        "city"
     ]
     df_transformed = df.drop(*columns_to_drop)
 
