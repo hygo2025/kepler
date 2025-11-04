@@ -63,20 +63,20 @@ def _geocode_cep_brasilapi(cep: str) -> dict | None:
 
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 404:
-            print(f"CEP {cep} não encontrado na BrasilAPI.")
+            print(f"\nCEP {cep} não encontrado na BrasilAPI.")
         else:
-            print(f"Erro HTTP ao buscar CEP {cep}: {e}")
+            print(f"\nErro HTTP ao buscar CEP {cep}: {e}")
     except requests.exceptions.RequestException as e:
-        print(f"Erro de conexão ao buscar CEP {cep}: {e}")
+        print(f"\nErro de conexão ao buscar CEP {cep}: {e}")
 
     return None
 
 
 def load_cep_cache() -> pd.DataFrame:
-    print(f"Carregando cache de CEPs de: {CEP_CACHE_PATH}")
+    print(f"\nCarregando cache de CEPs de: {CEP_CACHE_PATH}")
 
     if not os.path.exists(CEP_CACHE_PATH):
-        print("Arquivo de cache de CEPs não encontrado. Criando um novo.")
+        print("\nArquivo de cache de CEPs não encontrado. Criando um novo.")
         return pd.DataFrame(columns=CEP_CACHE_COLUMNS)
 
     try:
@@ -85,20 +85,20 @@ def load_cep_cache() -> pd.DataFrame:
         cache_df = cache_df.fillna('')
         cache_df['cep'] = cache_df['cep'].astype(str)
 
-        print(f"Cache de CEPs carregado. {len(cache_df)} registros encontrados.")
+        print(f"\nCache de CEPs carregado. {len(cache_df)} registros encontrados.")
         return cache_df
 
     except Exception as e:
-        print(f"Erro ao ler cache de CEPs, iniciando um novo: {e}")
+        print(f"\nErro ao ler cache de CEPs, iniciando um novo: {e}")
         return pd.DataFrame(columns=CEP_CACHE_COLUMNS)
 
 
 def geocode_new_ceps(new_ceps_list: list, cache_df: pd.DataFrame, checkpoint_interval=5) -> pd.DataFrame:
     if not new_ceps_list:
-        print("Nenhum CEP novo para geocodificar.")
+        print("\nNenhum CEP novo para geocodificar.")
         return cache_df
 
-    print(f"Geocodificando {len(new_ceps_list)} novos CEPs...")
+    print(f"\nGeocodificando {len(new_ceps_list)} novos CEPs...")
 
     new_results = []
     total = len(new_ceps_list)
@@ -130,9 +130,9 @@ def geocode_new_ceps(new_ceps_list: list, cache_df: pd.DataFrame, checkpoint_int
             try:
                 updated_cache.to_csv(CEP_CACHE_PATH, index=False)
             except Exception as e:
-                print(f"\nERRO: Não foi possível salvar o checkpoint de CEPs: {e}")
+                print(f"\n\nERRO: Não foi possível salvar o checkpoint de CEPs: {e}")
 
             new_results = []
 
-    print(f"Geocodificação de CEPs concluída.")
+    print(f"\nGeocodificação de CEPs concluída.")
     return updated_cache

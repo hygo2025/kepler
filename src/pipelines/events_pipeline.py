@@ -34,26 +34,26 @@ class EventsPipeline:
 
     def run(self):
         """Ponto de entrada para executar o pipeline de eventos."""
-        print("Iniciando EventsPipeline...")
+        print("\nIniciando EventsPipeline...")
         sale_raw_path = events_raw_path() + "/*.csv.gz"
         all_raw_events = read_csv_data(self.spark, sale_raw_path, multiline=False)
         all_raw_events = all_raw_events.filter(F.col("anonymized_user_id").isNotNull())
 
-        print(f"Contagem de eventos brutos (pré-join): {all_raw_events.count()}")
+        print(f"\nContagem de eventos brutos (pré-join): {all_raw_events.count()}")
 
         # Filtra eventos: mantém apenas eventos de listings que são "ACTIVE" e válidos
         joined_df = all_raw_events.join(self.listing_map, on="anonymized_listing_id", how="inner")
 
-        print(f"Contagem de eventos (pós-join com listings): {joined_df.count()}")
+        print(f"\nContagem de eventos (pós-join com listings): {joined_df.count()}")
 
         final_df = self._clean_data(joined_df)
 
         output_path = events_processed_path()
-        print(f"Salvando eventos processados em: {output_path}")
+        print(f"\nSalvando eventos processados em: {output_path}")
         (
             final_df.write
             .mode("overwrite")
             .partitionBy("dt")
             .parquet(output_path)
         )
-        print("EventsPipeline concluído.")
+        print("\nEventsPipeline concluído.")

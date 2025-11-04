@@ -30,7 +30,7 @@ class ListingsPipeline:
         for c in ["state", "city", "neighborhood"]:
             df = self._normalize_column(df, c)
 
-        print("Iniciando geocodificação por CEP (zip_code)...")
+        print("\nIniciando geocodificação por CEP (zip_code)...")
         if "zip_code" in df.columns:
             df_final = df.withColumn("cep", regexp_replace(col("zip_code"), "[^0-9]", ""))
         else:
@@ -113,10 +113,10 @@ class ListingsPipeline:
             df_final_persisted = df_final.persist()
             mapping_table_persisted = mapping_table.persist()
 
-            print(f"Salvando listings processados em: {final_path}")
+            print(f"\nSalvando listings processados em: {final_path}")
             df_final_persisted.coalesce(1).write.mode("overwrite").parquet(final_path)
 
-            print(f"Salvando mapeamento de listings em: {mapping_path}")
+            print(f"\nSalvando mapeamento de listings em: {mapping_path}")
             mapping_table_persisted.write.mode("overwrite").parquet(mapping_path)
         finally:
             if df_final_persisted: df_final_persisted.unpersist()
@@ -124,7 +124,7 @@ class ListingsPipeline:
 
     def run(self):
         """Ponto de entrada para executar o pipeline de listings."""
-        print("Iniciando ListingsPipeline...")
+        print("\nIniciando ListingsPipeline...")
         raw_path = listings_raw_path() + "/*.csv.gz"
         all_raw_listings = read_csv_data(self.spark, raw_path, multiline=True)
 
@@ -143,4 +143,4 @@ class ListingsPipeline:
         final_df = self._enrich_listings(final_df)
 
         self._save_results(final_df, mapping_table)
-        print("ListingsPipeline concluído.")
+        print("\nListingsPipeline concluído.")

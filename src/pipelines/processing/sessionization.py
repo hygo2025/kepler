@@ -10,7 +10,7 @@ def make_user_session(spark: SparkSession) -> None:
     associado a um 'anonymous_id', criando uma sessão de usuário.
     Limita a "colisão" (múltiplos user_ids para um anonymous_id).
     """
-    print("Iniciando make_user_session...")
+    print("\nIniciando make_user_session...")
     num_partitions = 512
     collision_threshold = 7  # Limite de 'user_ids' distintos por 'anonymous_id'
     output_path = user_sessions_path()
@@ -89,4 +89,4 @@ def make_user_session(spark: SparkSession) -> None:
         .mode("overwrite")
         .parquet(output_path)
     )
-    print("make_user_session concluído.")
+    print("\nmake_user_session concluído.")

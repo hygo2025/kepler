@@ -24,12 +24,12 @@ def _fill_user_id(raw_events: DataFrame) -> DataFrame:
         "unified_user_id",
         F.coalesce(F.col("user_id"), F.col("session_user_id"), F.col("anonymous_id"))
     )
-    return df_with_filled_id.drop("session_user_id")
+    return df_with_unified_id.drop("session_user_id")
 
 
 def _create_and_apply_user_map(df: DataFrame) -> tuple[DataFrame, DataFrame]:
     """Cria e aplica um ID numérico para 'unified_user_id'."""
-    print("Iniciando mapeamento de 'unified_user_id' para 'user_numeric_id'...")
+    print("\nIniciando mapeamento de 'unified_user_id' para 'user_numeric_id'...")
     id_window = Window.orderBy(F.lit(1))
     distinct_users = df.select("unified_user_id").distinct()
     user_mapping_table = distinct_users.withColumn("user_numeric_id", F.row_number().over(id_window))
@@ -39,7 +39,7 @@ def _create_and_apply_user_map(df: DataFrame) -> tuple[DataFrame, DataFrame]:
 
 def _create_and_apply_session_map(df: DataFrame) -> tuple[DataFrame, DataFrame]:
     """Cria e aplica um ID numérico para 'anonymized_session_id'."""
-    print("Iniciando mapeamento de 'anonymized_session_id' para 'session_numeric_id'...")
+    print("\nIniciando mapeamento de 'anonymized_session_id' para 'session_numeric_id'...")
     id_window = Window.orderBy(F.lit(1))
     distinct_sessions = df.select("anonymized_session_id").distinct()
     session_mapping_table = distinct_sessions.withColumn("session_numeric_id", F.row_number().over(id_window))
@@ -82,7 +82,7 @@ def enrich_events(spark: SparkSession):
     5. Padroniza (limpa, renomeia, reordena) o DataFrame final.
     6. Salva os dados enriquecidos/padronizados e os mapas.
     """
-    print("Iniciando enrich_events...")
+    print("\nIniciando enrich_events...")
     # 1. Carregar dados
     users_raw = spark.read.option("mergeSchema", "true").parquet(user_sessions_path())
     listings_raw = spark.read.option("mergeSchema", "true").parquet(listings_processed_path())
@@ -113,7 +113,7 @@ def enrich_events(spark: SparkSession):
     final_events_df, session_mapping_table = _create_and_apply_session_map(events_with_user_map)
 
     # 6. Padronização final
-    print("Aplicando padronização final (renomeando e reordenando colunas)...")
+    print("\nAplicando padronização final (renomeando e reordenando colunas)...")
 
     columns_to_drop: List[str] = [
         "anonymized_session_id", "unified_user_id", "listing_id",
@@ -150,13 +150,13 @@ def enrich_events(spark: SparkSession):
     user_map_persisted = None
     session_map_persisted = None
     try:
-        print("Materializando DataFrames em cache...")
+        print("\nMaterializando DataFrames em cache...")
         # Persiste o DataFrame JÁ PADRONIZADO
         final_events_persisted = final_events_df_standardized.persist()
         user_map_persisted = user_mapping_table.persist()
         session_map_persisted = session_mapping_table.persist()
 
-        print(f"Salvando base de dados de eventos enriquecidos e padronizados em: {final_output_path}")
+        print(f"\nSalvando base de dados de eventos enriquecidos e padronizados em: {final_output_path}")
         (
             final_events_persisted
             .coalesce(4)
@@ -167,7 +167,7 @@ def enrich_events(spark: SparkSession):
             .parquet(final_output_path)
         )
 
-        print(f"Salvando mapa de usuários unificados em: {user_map_output_path}")
+        print(f"\nSalvando mapa de usuários unificados em: {user_map_output_path}")
         (
             user_map_persisted
             .coalesce(1)
@@ -176,7 +176,7 @@ def enrich_events(spark: SparkSession):
             .parquet(user_map_output_path)
         )
 
-        print(f"Salvando mapa de sessões unificadas em: {session_map_output_path}")
+        print(f"\nSalvando mapa de sessões unificadas em: {session_map_output_path}")
         (
             session_map_persisted
             .coalesce(1)
@@ -189,4 +189,4 @@ def enrich_events(spark: SparkSession):
         if user_map_persisted: user_map_persisted.unpersist()
         if session_map_persisted: session_map_persisted.unpersist()
 
-    print("enrich_events concluído.")
+    print("\nenrich_events concluído.")
