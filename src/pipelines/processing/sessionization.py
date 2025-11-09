@@ -4,13 +4,15 @@ from pyspark.sql import SparkSession
 from src.utils.enviroment import user_sessions_path, events_processed_path
 
 
-def make_user_session(spark: SparkSession) -> None:
+def resolve_user_identities(spark: SparkSession) -> None:
     """
-    Processa eventos para identificar o 'user_id' principal
-    associado a um 'anonymous_id', criando uma sessão de usuário.
-    Limita a "colisão" (múltiplos user_ids para um anonymous_id).
+    Resolve identidades de usuários anônimos e logados ('Identity Stitching').
+
+    Agrupa eventos por 'anonymous_id', identifica o 'user_id' mais frequente
+    associado e descarta casos ambíguos (muitos user_ids distintos).
+    Salva um mapeamento final de (anonymous_id -> user_id principal).
     """
-    print("\nIniciando make_user_session...")
+    print("\nIniciando resolve_user_identities...")
     num_partitions = 512
     collision_threshold = 7  # Limite de 'user_ids' distintos por 'anonymous_id'
     output_path = user_sessions_path()
@@ -89,4 +91,4 @@ def make_user_session(spark: SparkSession) -> None:
         .mode("overwrite")
         .parquet(output_path)
     )
-    print("\nmake_user_session concluído.")
+    print("\nresolve_user_identities concluído.")

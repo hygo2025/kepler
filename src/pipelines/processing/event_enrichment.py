@@ -24,6 +24,7 @@ def _fill_user_id(raw_events: DataFrame) -> DataFrame:
         "unified_user_id",
         F.coalesce(F.col("user_id"), F.col("session_user_id"), F.col("anonymous_id"))
     )
+
     return df_with_unified_id.drop("session_user_id")
 
 
@@ -99,6 +100,7 @@ def enrich_events(spark: SparkSession):
 
     # 2. Identity Stitching
     events_enriched = _fill_user_id(raw_events=raw_events)
+    print(f"\nNúmero de eventos após Identity Stitching: {events_enriched.count()}")
 
     # 3. Join com Listings (trazendo dados do anúncio)
     events_enriched = events_enriched.join(listings, on="listing_id", how="inner")

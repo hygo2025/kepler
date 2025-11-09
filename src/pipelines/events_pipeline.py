@@ -37,7 +37,9 @@ class EventsPipeline:
         print("\nIniciando EventsPipeline...")
         sale_raw_path = events_raw_path() + "/*.csv.gz"
         all_raw_events = read_csv_data(self.spark, sale_raw_path, multiline=False)
-        all_raw_events = all_raw_events.filter(F.col("anonymized_user_id").isNotNull())
+        print(f"\nContagem inicial de eventos brutos: {all_raw_events.count()}")
+        #all_raw_events = all_raw_events.filter(F.col("anonymized_user_id").isNotNull())#TODO: Esse filtro deve ser removido, sessoes anonimas nao devem de ser descartadas
+        print(f"\nContagem de eventos brutos (filtrado por anonymized_user_id): {all_raw_events.count()}")
 
         print(f"\nContagem de eventos brutos (pré-join): {all_raw_events.count()}")
 
